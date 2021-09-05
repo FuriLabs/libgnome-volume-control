@@ -76,6 +76,11 @@ struct GvcMixerControlPrivate
         gboolean          event_sink_input_is_set;
         guint             event_sink_input_id;
 
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        gboolean          phone_stream_is_set;
+        guint             phone_stream_id;
+#endif /* WITH_DROIDIAN_EXTENSIONS */
+
         GHashTable       *all_streams;
         GHashTable       *sinks; /* fixed outputs */
         GHashTable       *sources; /* fixed inputs */
@@ -114,6 +119,10 @@ enum {
         STREAM_ADDED,
         STREAM_REMOVED,
         STREAM_CHANGED,
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        PHONE_STREAM_ADDED,
+        PHONE_STREAM_REMOVED,
+#endif /* WITH_DROIDIAN_EXTENSIONS */
         CARD_ADDED,
         CARD_REMOVED,
         DEFAULT_SINK_CHANGED,
@@ -1189,6 +1198,18 @@ remove_stream (GvcMixerControl *control,
                        signals[STREAM_REMOVED],
                        0,
                        gvc_mixer_stream_get_id (stream));
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        if (control->priv->phone_stream_is_set &&
+            control->priv->phone_stream_id == id) {
+                control->priv->phone_stream_id = 0;
+                control->priv->phone_stream_is_set = FALSE;
+
+                g_signal_emit (G_OBJECT (control),
+                               signals[PHONE_STREAM_REMOVED],
+                               0,
+                               id);
+        }
+#endif /* WITH_DROIDIAN_EXTENSIONS */
         g_object_unref (stream);
 }
 
@@ -1203,6 +1224,20 @@ add_stream (GvcMixerControl *control,
                        signals[STREAM_ADDED],
                        0,
                        gvc_mixer_stream_get_id (stream));
+
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        /* If the stream is a voice call stream, signal PHONE_STREAM_ADDED as well */
+        if (!gvc_mixer_stream_is_phone_stream (stream))
+            return;
+
+        control->priv->phone_stream_id = gvc_mixer_stream_get_id (stream);
+        control->priv->phone_stream_is_set = TRUE;
+
+        g_signal_emit (G_OBJECT (control),
+                       signals[PHONE_STREAM_ADDED],
+                       0,
+                       control->priv->phone_stream_id);
+#endif /* WITH_DROIDIAN_EXTENSIONS */
 }
 
 /* This method will match individual stream ports against its corresponding device
@@ -1735,6 +1770,25 @@ set_is_event_stream_from_proplist (GvcMixerStream *stream,
         gvc_mixer_stream_set_is_event_stream (stream, is_event_stream);
 }
 
+#ifdef WITH_DROIDIAN_EXTENSIONS
+static void
+set_is_phone_stream_from_proplist (GvcMixerStream *stream,
+                                   pa_proplist    *l)
+{
+        const char *t;
+        gboolean is_phone_stream;
+
+        is_phone_stream = FALSE;
+
+        if ((t = pa_proplist_gets (l, PA_PROP_MEDIA_ROLE))) {
+                if (g_str_equal (t, "phone"))
+                        is_phone_stream = TRUE;
+        }
+
+        gvc_mixer_stream_set_is_phone_stream (stream, is_phone_stream);
+}
+#endif /* WITH_DROIDIAN_EXTENSIONS */
+
 static void
 set_application_id_from_proplist (GvcMixerStream *stream,
                                   pa_proplist    *l)
@@ -1790,6 +1844,9 @@ update_sink_input (GvcMixerControl          *control,
 
         set_application_id_from_proplist (stream, info->proplist);
         set_is_event_stream_from_proplist (stream, info->proplist);
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        set_is_phone_stream_from_proplist (stream, info->proplist);
+#endif /* WITH_DROIDIAN_EXTENSIONS */
         set_icon_name_from_proplist (stream, info->proplist, "applications-multimedia");
         gvc_mixer_stream_set_volume (stream, (guint)max_volume);
         gvc_mixer_stream_set_is_muted (stream, info->mute);
@@ -3603,6 +3660,24 @@ gvc_mixer_control_class_init (GvcMixerControlClass *klass)
                               NULL, NULL,
                               g_cclosure_marshal_VOID__UINT,
                               G_TYPE_NONE, 1, G_TYPE_UINT);
+#ifdef WITH_DROIDIAN_EXTENSIONS
+        signals [PHONE_STREAM_ADDED] =
+                g_signal_new ("phone-stream-added",
+                              G_TYPE_FROM_CLASS (klass),
+                              G_SIGNAL_RUN_LAST,
+                              G_STRUCT_OFFSET (GvcMixerControlClass, phone_stream_added),
+                              NULL, NULL,
+                              g_cclosure_marshal_VOID__UINT,
+                              G_TYPE_NONE, 1, G_TYPE_UINT);
+        signals [PHONE_STREAM_REMOVED] =
+                g_signal_new ("phone-stream-removed",
+                              G_TYPE_FROM_CLASS (klass),
+                              G_SIGNAL_RUN_LAST,
+                              G_STRUCT_OFFSET (GvcMixerControlClass, phone_stream_removed),
+                              NULL, NULL,
+                              g_cclosure_marshal_VOID__UINT,
+                              G_TYPE_NONE, 1, G_TYPE_UINT);
+#endif /* WITH_DROIDIAN_EXTENSIONS */
         signals [STREAM_CHANGED] =
                 g_signal_new ("stream-changed",
                               G_TYPE_FROM_CLASS (klass),
