@@ -1417,6 +1417,7 @@ sync_devices (GvcMixerControl *control,
                                                "origin", "", /* Leave it empty for these special cases */
                                                "port-name", NULL,
                                                "port-available", TRUE,
+                                               "icon-name", gvc_mixer_stream_get_icon_name (stream),
                                                 NULL);
                         device = GVC_MIXER_UI_DEVICE (object);
 
